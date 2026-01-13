@@ -7,11 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum RsvpStatus {
-  YES
-  NO
-  PENDING
-}
 
 model InviteGroup {
   id              String   @id @default(cuid())
@@ -31,7 +26,7 @@ model Guest {
   id         String     @id @default(cuid())
   groupId    String
   fullName   String
-  rsvpStatus RsvpStatus @default(PENDING)
+  rsvpStatus RsvpStatus @default("PENDING")
   diet       String?    // ex.: "vegetariano;sem_gluten"
   updatedAt  DateTime   @updatedAt
 
