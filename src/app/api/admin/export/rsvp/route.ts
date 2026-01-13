@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (!process.env.DATABASE_URL) {
+    const header = ["group_label", "guest_name", "rsvp_status", "diet", "updated_at"].join(",");
+    return new NextResponse(header + "
+", {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": "attachment; filename=rsvp.csv"
+      }
+    });
+  }
+
+  const { prisma } = await import("@/lib/db");
   const guests = await prisma.guest.findMany({
     include: { group: true },
     orderBy: [{ group: { label: "asc" } }, { fullName: "asc" }]

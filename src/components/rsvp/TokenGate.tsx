@@ -42,17 +42,12 @@ function TurnstileWidget({ onToken }: { onToken: (t: string) => void }) {
 
 export function TokenGate({
   mode,
-  initialToken = ""
+  initialToken
 }: {
   mode: "rsvp" | "address";
   initialToken?: string;
-}) {  const [token, setToken] = useState(initialToken);
-
-  // Mantém o campo preenchido quando o token vem por QR/link (sem depender de hooks de URL).
-  useEffect(() => {
-    if (initialToken && token.trim() === "") setToken(initialToken);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialToken]);
+}) {  const tokenFromUrl = initialToken ?? "";
+  const [token, setToken] = useState(tokenFromUrl);
   const [party, setParty] = useState<Party | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -62,12 +57,12 @@ export function TokenGate({
   const title = mode === "rsvp" ? "Confirmar presença" : "Endereço completo";
 
   useEffect(() => {
-    if (initialToken && !party) {
+    if (tokenFromUrl && !party) {
       // Auto-lookup se veio via QR com token
-      void lookup(initialToken);
+      void lookup(tokenFromUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialToken]);
+  }, [tokenFromUrl]);
 
   async function lookup(tokenValue: string) {
     setLoading(true);

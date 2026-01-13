@@ -6,8 +6,11 @@ import { Card, CardBody } from "@/components/Card";
 import { TokenGate } from "@/components/rsvp/TokenGate";
 import { site } from "@/lib/site";
 
-export default function InfoPage({ searchParams }: { searchParams?: { t?: string | string[] } }) {
-  const t = typeof searchParams?.t === "string" ? searchParams.t : "";
+export const dynamic = "force-dynamic";
+
+export default function InfoPage({ searchParams }: { searchParams?: { t?: string } }) {
+  const t = searchParams?.t ? String(searchParams.t) : undefined;
+
   return (
     <Container>
       <div className="py-12 md:py-16">
