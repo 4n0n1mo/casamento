@@ -67,7 +67,6 @@ export default function HomePage() {
                       className="object-cover opacity-90"
                       priority
                       sizes="(max-width: 768px) 100vw, 40vw"
-                      onError={() => { /* noop */ }}
                     />
                     <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(246,241,232,0.10),rgba(246,241,232,0.75))]" />
                   </div>

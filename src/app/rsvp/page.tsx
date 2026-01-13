@@ -3,7 +3,8 @@ import { SectionTitle } from "@/components/SectionTitle";
 import { Divider } from "@/components/Divider";
 import { TokenGate } from "@/components/rsvp/TokenGate";
 
-export default function RsvpPage() {
+export default function RsvpPage({ searchParams }: { searchParams?: { t?: string | string[] } }) {
+  const t = typeof searchParams?.t === "string" ? searchParams.t : "";
   return (
     <Container>
       <div className="py-12 md:py-16">
@@ -15,7 +16,7 @@ export default function RsvpPage() {
 
         <Divider />
 
-        <TokenGate mode="rsvp" />
+        <TokenGate mode="rsvp" initialToken={t} />
       </div>
     </Container>
   );

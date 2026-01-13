@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/Button";
 import { Card, CardBody } from "@/components/Card";
 import { cn } from "@/lib/utils";
@@ -42,13 +41,18 @@ function TurnstileWidget({ onToken }: { onToken: (t: string) => void }) {
 }
 
 export function TokenGate({
-  mode
+  mode,
+  initialToken = ""
 }: {
   mode: "rsvp" | "address";
-}) {
-  const sp = useSearchParams();
-  const tokenFromUrl = sp.get("t") ?? "";
-  const [token, setToken] = useState(tokenFromUrl);
+  initialToken?: string;
+}) {  const [token, setToken] = useState(initialToken);
+
+  // Mantém o campo preenchido quando o token vem por QR/link (sem depender de hooks de URL).
+  useEffect(() => {
+    if (initialToken && token.trim() === "") setToken(initialToken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialToken]);
   const [party, setParty] = useState<Party | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -58,12 +62,12 @@ export function TokenGate({
   const title = mode === "rsvp" ? "Confirmar presença" : "Endereço completo";
 
   useEffect(() => {
-    if (tokenFromUrl && !party) {
+    if (initialToken && !party) {
       // Auto-lookup se veio via QR com token
-      void lookup(tokenFromUrl);
+      void lookup(initialToken);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenFromUrl]);
+  }, [initialToken]);
 
   async function lookup(tokenValue: string) {
     setLoading(true);
