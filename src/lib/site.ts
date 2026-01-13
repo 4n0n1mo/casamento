@@ -14,8 +14,19 @@ export const site = {
   locationFull: process.env.EVENT_ADDRESS_FULL ?? "",
   mapLink:
     "https://www.google.com/maps/search/?api=1&query=Jardins%20S%C3%A3o%20Paulo",
+
+
+  // Pix (modo sem backend)
+  pixGatewayUrl: process.env.NEXT_PUBLIC_PIX_GATEWAY_URL ?? "",
+  pixLinksJson: process.env.NEXT_PUBLIC_PIX_LINKS_JSON ?? "",
+  pixKey: process.env.NEXT_PUBLIC_PIX_KEY ?? "",
+  pixKeyOwner: process.env.NEXT_PUBLIC_PIX_KEY_OWNER ?? "",
+
+  // RSVP (modo sem backend)
+  rsvpPublicKeyB64: process.env.NEXT_PUBLIC_RSVP_PUBLIC_KEY_B64 ?? "",
+  rsvpWebhookUrl: process.env.NEXT_PUBLIC_RSVP_WEBHOOK_URL ?? "",
   pixCopy:
-    "Os presentes são simbólicos; o presente real será via Pix pelo nosso checkout.",
+    "Os presentes são simbólicos; o presente real será via Pix (gateway) ou chave Pix.",
   gifts: [
     { title: "Jantar a dois", value: 15000, note: "Uma noite especial." },
     { title: "Café da manhã especial", value: 8000, note: "Começo doce." },

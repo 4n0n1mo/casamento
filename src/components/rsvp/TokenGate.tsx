@@ -1,339 +1,420 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/Button";
-import { Card, CardBody } from "@/components/Card";
-import { cn } from "@/lib/utils";
+import { useSearchParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { site } from "@/lib/site";
+import {
+  verifyPartyToken,
+  type PartyTokenPayload,
+  type RsvpStatus,
+  isDeadlinePassed,
+  formatDeadline
+} from "@/lib/rsvpToken";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Badge } from "@/components/ui/Badge";
 
-type Guest = { id: string; fullName: string; rsvpStatus: "YES" | "NO" | "PENDING"; diet?: string | null };
-type Party = { label: string; deadline: string; plusOneAllowed: boolean; guests: Guest[]; addressFull?: string | null };
+type Mode = "rsvp" | "info";
 
-function TurnstileWidget({ onToken }: { onToken: (t: string) => void }) {
-  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+type GuestState = {
+  id: string;
+  fullName: string;
+  rsvpStatus: RsvpStatus;
+  diet: string[];
+  dietOther: string;
+};
 
-  useEffect(() => {
-    if (!siteKey) return;
+const DIET_OPTIONS = [
+  "Vegetariano",
+  "Vegano",
+  "Sem glúten",
+  "Sem lactose",
+  "Alergia a nozes",
+  "Alergia a frutos do mar"
+] as const;
 
-    const scriptId = "turnstile-script";
-    if (document.getElementById(scriptId)) return;
-
-    const s = document.createElement("script");
-    s.id = scriptId;
-    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-    s.async = true;
-    s.defer = true;
-    document.body.appendChild(s);
-  }, []);
-
-  if (!siteKey) return null;
-
-  // data-callback chama função global – fazemos ponte simples
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).onTurnstileSuccess = (token: string) => onToken(token);
-
-  return (
-    <div
-      className="cf-turnstile"
-      data-sitekey={siteKey}
-      data-callback="onTurnstileSuccess"
-    />
-  );
+function clampToken(t: string) {
+  return t.replace(/\s+/g, "").slice(0, 512);
 }
 
-export function TokenGate({
-  mode,
-  initialToken
-}: {
-  mode: "rsvp" | "address";
-  initialToken?: string;
-}) {  const tokenFromUrl = initialToken ?? "";
-  const [token, setToken] = useState(tokenFromUrl);
-  const [party, setParty] = useState<Party | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [captchaRequired, setCaptchaRequired] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string>("");
+async function safeCopy(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-  const title = mode === "rsvp" ? "Confirmar presença" : "Endereço completo";
+function buildSummary(party: PartyTokenPayload, guests: GuestState[]) {
+  const lines: string[] = [];
+  lines.push(`RSVP — ${site.couple.a} & ${site.couple.b}`);
+  lines.push(`Grupo: ${party.label}`);
+  lines.push(`Data/hora: ${site.dateLong} • ${site.city}`);
+  lines.push("---");
+  for (const g of guests) {
+    const status = g.rsvpStatus === "YES" ? "VAI" : g.rsvpStatus === "NO" ? "NÃO VAI" : "PENDENTE";
+    const diet = [...g.diet, g.dietOther?.trim()].filter(Boolean).join(", ");
+    lines.push(`${g.fullName}: ${status}${diet ? ` (Alimentação: ${diet})` : ""}`);
+  }
+  lines.push("---");
+  lines.push(`Gerado em: ${new Date().toLocaleString("pt-BR")}`);
+  return lines.join("\n");
+}
+
+export function TokenGate({ mode = "rsvp" as Mode }: { mode?: Mode }) {
+  const sp = useSearchParams();
+  const initialToken = useMemo(() => clampToken(sp.get("t") ?? ""), [sp]);
+
+  const [token, setToken] = useState(initialToken);
+  const [loading, setLoading] = useState(false);
+  const [party, setParty] = useState<PartyTokenPayload | null>(null);
+  const [guests, setGuests] = useState<GuestState[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+
+  const deadlineLabel = useMemo(() => formatDeadline(party?.deadline), [party?.deadline]);
+  const deadlinePassed = useMemo(() => isDeadlinePassed(party?.deadline), [party?.deadline]);
 
   useEffect(() => {
-    if (tokenFromUrl && !party) {
-      // Auto-lookup se veio via QR com token
-      void lookup(tokenFromUrl);
-    }
+    if (!initialToken) return;
+    void handleValidate(initialToken);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenFromUrl]);
+  }, [initialToken]);
 
-  async function lookup(tokenValue: string) {
+  async function handleValidate(tokenToValidate?: string) {
+    const t = clampToken(tokenToValidate ?? token);
+    setToken(t);
+    setError(null);
+    setSubmitted(false);
+    setSummary(null);
     setLoading(true);
-    setMsg(null);
     try {
-      const res = await fetch("/api/rsvp/lookup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ token: tokenValue, mode, turnstileToken: captchaToken || undefined })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setCaptchaRequired(Boolean(data?.captchaRequired));
-        setMsg("Não foi possível validar o código. Verifique e tente novamente.");
+      const payload = await verifyPartyToken(t, site.rsvpPublicKeyB64);
+      if (!payload) {
+        setParty(null);
+        setGuests([]);
+        setError(site.rsvpPublicKeyB64 ? "Código inválido." : "RSVP não configurado. Use token DEMO para pré-visualizar.");
         return;
       }
-      setCaptchaRequired(false);
-      setParty(data.party as Party);
-    } catch {
-      setMsg("Falha de conexão. Tente novamente.");
+      setParty(payload);
+      setGuests(
+        (payload.guests ?? []).map((g) => ({
+          id: g.id,
+          fullName: g.fullName,
+          rsvpStatus: "PENDING",
+          diet: [],
+          dietOther: ""
+        }))
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  if (!party) {
-    return (
-      <Card>
-        <CardBody className="flex flex-col gap-4">
-          <div>
-            <div className="text-xs tracking-[0.18em] uppercase text-olive/70">Acesso</div>
-            <h2 className="font-serif text-2xl text-charcoal">{title}</h2>
-            <p className="mt-2 text-sm text-charcoal/75">
-              Digite o código do seu convite. Ele também pode vir automaticamente pelo QR Code.
-            </p>
-          </div>
+  function setGuestStatus(id: string, status: RsvpStatus) {
+    setGuests((prev) => prev.map((g) => (g.id === id ? { ...g, rsvpStatus: status } : g)));
+  }
 
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-charcoal/80" htmlFor="token">Código do convite</label>
-            <input
-              id="token"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              className={cn(
-                "w-full rounded-xl border border-line bg-white/60 px-4 py-3 text-sm outline-none transition duration-200",
-                "focus:border-gold/70 focus:ring-2 focus:ring-gold/20"
-              )}
-              placeholder="Ex.: 8mQw7ZpK... (sem espaços)"
-              autoCapitalize="none"
-              autoCorrect="off"
-            />
-          </div>
-
-          {captchaRequired ? (
-            <div className="rounded-xl border border-line bg-white/40 p-4">
-              <p className="text-sm text-charcoal/75 mb-3">
-                Por segurança, conclua a verificação abaixo e tente novamente.
-              </p>
-              <TurnstileWidget onToken={(t) => setCaptchaToken(t)} />
-            </div>
-          ) : null}
-
-          {msg ? <p className="text-sm text-terracotta">{msg}</p> : null}
-
-          <Button
-            onClick={() => lookup(token)}
-            disabled={loading || token.trim().length < 10 || (captchaRequired && !captchaToken)}
-          >
-            {loading ? "Validando..." : "Continuar"}
-          </Button>
-
-          <p className="text-xs text-charcoal/60">
-            O RSVP é fechado. Apenas convidados com código conseguem confirmar.
-          </p>
-        </CardBody>
-      </Card>
+  function toggleDiet(id: string, opt: string) {
+    setGuests((prev) =>
+      prev.map((g) => {
+        if (g.id !== id) return g;
+        const has = g.diet.includes(opt);
+        const diet = has ? g.diet.filter((x) => x !== opt) : [...g.diet, opt];
+        return { ...g, diet };
+      })
     );
   }
 
-  if (mode === "address") {
-    return (
-      <Card>
-        <CardBody className="flex flex-col gap-3">
-          <div className="text-xs tracking-[0.18em] uppercase text-olive/70">Convidados</div>
-          <h2 className="font-serif text-2xl text-charcoal">Endereço completo</h2>
-          {party.addressFull ? (
-            <p className="text-sm text-charcoal/80 whitespace-pre-line">{party.addressFull}</p>
-          ) : (
-            <p className="text-sm text-charcoal/75">
-              O endereço completo ainda não foi configurado.
-            </p>
-          )}
-          <p className="text-xs text-charcoal/60">
-            Este conteúdo é protegido pelo código do convite.
-          </p>
-        </CardBody>
-      </Card>
-    );
+  function setDietOther(id: string, value: string) {
+    setGuests((prev) => prev.map((g) => (g.id === id ? { ...g, dietOther: value } : g)));
   }
 
-  return <RsvpForm party={party} />;
-}
+  async function handleSubmit() {
+    if (!party) return;
+    if (deadlinePassed) {
+      setError("Este RSVP está fechado para este grupo.");
+      return;
+    }
 
-function DietChips({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  const options: Array<{ k: string; label: string }> = [
-    { k: "vegetariano", label: "Vegetariano" },
-    { k: "vegano", label: "Vegano" },
-    { k: "sem_gluten", label: "Sem glúten" },
-    { k: "sem_lactose", label: "Sem lactose" },
-    { k: "alergia_nozes", label: "Alergia a nozes" }
-  ];
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map((o) => {
-        const active = value.includes(o.k);
-        return (
-          <button
-            type="button"
-            key={o.k}
-            onClick={() =>
-              onChange(active ? value.filter((x) => x !== o.k) : [...value, o.k])
-            }
-            className={cn(
-              "rounded-full border px-3 py-1 text-xs transition duration-200",
-              active
-                ? "border-olive bg-olive/10 text-olive"
-                : "border-line bg-white/30 text-charcoal/75 hover:bg-charcoal/5"
-            )}
-            aria-pressed={active}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+    setError(null);
+    setLoading(true);
 
-function RsvpForm({ party }: { party: Party }) {
-  const initial = useMemo(() => {
-    return party.guests.map((g) => ({
-      id: g.id,
-      fullName: g.fullName,
-      rsvpStatus: g.rsvpStatus,
-      diet: g.diet ? g.diet.split(";").filter(Boolean) : []
-    }));
-  }, [party.guests]);
-
-  const [rows, setRows] = useState(initial);
-  const [saving, setSaving] = useState(false);
-  const [ok, setOk] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  function setStatus(id: string, status: "YES" | "NO") {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, rsvpStatus: status } : r)));
-  }
-
-  function setDiet(id: string, diet: string[]) {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, diet } : r)));
-  }
-
-  async function submit() {
-    setSaving(true);
-    setErr(null);
-    setOk(false);
+    const payload = {
+      token,
+      groupLabel: party.label,
+      deadline: party.deadline,
+      responses: guests.map((g) => ({
+        guestId: g.id,
+        fullName: g.fullName,
+        rsvpStatus: g.rsvpStatus,
+        diet: g.diet,
+        dietOther: g.dietOther?.trim() || undefined
+      })),
+      createdAt: new Date().toISOString()
+    };
 
     try {
-      const res = await fetch("/api/rsvp/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({
-          guests: rows.map((r) => ({
-            id: r.id,
-            rsvpStatus: r.rsvpStatus,
-            diet: r.diet.join(";")
-          }))
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setErr(data?.message || "Não foi possível salvar. Tente novamente.");
-        return;
+      if (site.rsvpWebhookUrl) {
+        const res = await fetch(site.rsvpWebhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          setError("Não foi possível enviar agora. Tente novamente.");
+          return;
+        }
       }
 
-      setOk(true);
+      const s = buildSummary(party, guests);
+      setSummary(s);
+      setSubmitted(true);
     } catch {
-      setErr("Falha de conexão. Tente novamente.");
+      setError("Não foi possível enviar agora. Tente novamente.");
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
+  const fade = { duration: 0.2 };
+
   return (
-    <Card>
-      <CardBody className="flex flex-col gap-6">
+    <section className="mt-10">
+      <div className="flex items-start justify-between gap-6">
         <div>
-          <div className="text-xs tracking-[0.18em] uppercase text-olive/70">{party.label}</div>
-          <h2 className="font-serif text-2xl text-charcoal">Confirmar presença</h2>
-          <p className="mt-2 text-sm text-charcoal/75">
-            Selecione <strong>Vai</strong> ou <strong>Não vai</strong> para cada pessoa. Você pode editar até a data limite.
+          <h2 className="font-serif text-2xl md:text-3xl text-charcoal">
+            {mode === "info" ? "Acesso do convidado" : "Confirmar presença"}
+          </h2>
+          <p className="mt-2 text-sm md:text-base text-charcoal/70 max-w-[60ch]">
+            {mode === "info"
+              ? "Para ver o endereço completo, use o código do seu convite (token) ou acesse pelo QR."
+              : "Use o código do seu convite (token) ou acesse pelo QR para confirmar presença do seu grupo."}
           </p>
-            {party.plusOneAllowed ? null : (
-              <p className="mt-2 text-xs text-charcoal/60">
-                Observação: este convite não possui acompanhante adicional.
-              </p>
-            )}
+          {!site.rsvpPublicKeyB64 && (
+            <p className="mt-2 text-xs text-charcoal/60">
+              Pré-visualização: use o token <span className="font-mono">DEMO</span>.
+            </p>
+          )}
         </div>
 
-        <div className="flex flex-col gap-4">
-          {rows.map((r) => (
-            <div key={r.id} className="rounded-xl border border-line bg-white/35 p-4">
-              <div className="flex flex-col gap-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="font-medium text-charcoal">{r.fullName}</div>
-                    <div className="text-xs text-charcoal/60">Restrição alimentar (opcional)</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-xs transition duration-200",
-                        r.rsvpStatus === "YES"
-                          ? "border-olive bg-olive/10 text-olive"
-                          : "border-line bg-white/30 text-charcoal/75 hover:bg-charcoal/5"
-                      )}
-                      onClick={() => setStatus(r.id, "YES")}
-                      aria-pressed={r.rsvpStatus === "YES"}
-                    >
-                      Vai
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        "rounded-full border px-3 py-1 text-xs transition duration-200",
-                        r.rsvpStatus === "NO"
-                          ? "border-terracotta bg-terracotta/10 text-terracotta"
-                          : "border-line bg-white/30 text-charcoal/75 hover:bg-charcoal/5"
-                      )}
-                      onClick={() => setStatus(r.id, "NO")}
-                      aria-pressed={r.rsvpStatus === "NO"}
-                    >
-                      Não vai
-                    </button>
-                  </div>
-                </div>
-                <DietChips value={r.diet} onChange={(d) => setDiet(r.id, d)} />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {err ? <p className="text-sm text-terracotta">{err}</p> : null}
-        {ok ? (
-          <div className="rounded-xl border border-line bg-olive/5 p-4 text-sm text-olive">
-            Presença atualizada com sucesso.
+        {party && (
+          <div className="hidden md:flex items-center gap-2">
+            <Badge>{party.label}</Badge>
+            {deadlineLabel && <Badge variant={deadlinePassed ? "muted" : "accent"}>Até {deadlineLabel}</Badge>}
           </div>
-        ) : null}
+        )}
+      </div>
 
-        <Button onClick={submit} disabled={saving}>
-          {saving ? "Salvando..." : "Confirmar"}
-        </Button>
+      <Card className="mt-6 p-5 md:p-6">
+        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+          <div>
+            <label className="text-xs tracking-[0.18em] uppercase text-olive/70">Código (token)</label>
+            <Input
+              value={token}
+              onChange={(e) => setToken(clampToken(e.target.value))}
+              placeholder={site.rsvpPublicKeyB64 ? "Cole aqui o token do convite" : "DEMO"}
+              className="mt-2 font-mono"
+              inputMode="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+          </div>
+          <div className="flex items-end">
+            <Button onClick={() => void handleValidate()} disabled={loading || !token}>
+              {loading ? "Validando…" : "Acessar"}
+            </Button>
+          </div>
+        </div>
 
-        <p className="text-xs text-charcoal/60">
-          Política: usamos apenas para contagem de convidados e restrições alimentares.
-        </p>
-      </CardBody>
-    </Card>
+        <AnimatePresence>
+          {error && (
+            <motion.p
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0, transition: fade }}
+              exit={{ opacity: 0, y: 6, transition: fade }}
+              className="mt-4 text-sm text-terracotta"
+            >
+              {error}
+            </motion.p>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {party && mode === "info" && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0, transition: fade }}
+              exit={{ opacity: 0, y: 10, transition: fade }}
+              className="mt-6"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs tracking-[0.18em] uppercase text-olive/70">Endereço completo</div>
+                  <div className="mt-2 text-base md:text-lg text-charcoal">
+                    {party.addressFull || "Endereço não informado neste token."}
+                  </div>
+                  {party.notes && <div className="mt-2 text-sm text-charcoal/70">{party.notes}</div>}
+                </div>
+                <div className="shrink-0">
+                  <Button
+                    variant="secondary"
+                    onClick={() => void safeCopy(party.addressFull || "")}
+                    disabled={!party.addressFull}
+                  >
+                    Copiar
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 text-sm text-charcoal/60">
+                Se precisar, use o mapa da região: {" "}
+                <a className="underline" href={site.mapLink} target="_blank" rel="noreferrer">
+                  abrir no Maps
+                </a>
+                .
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {party && mode === "rsvp" && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0, transition: fade }}
+              exit={{ opacity: 0, y: 10, transition: fade }}
+              className="mt-6"
+            >
+              <div className="flex flex-wrap items-center gap-2 md:hidden">
+                <Badge>{party.label}</Badge>
+                {deadlineLabel && <Badge variant={deadlinePassed ? "muted" : "accent"}>Até {deadlineLabel}</Badge>}
+              </div>
+
+              {deadlinePassed && (
+                <div className="mt-4 rounded-xl border border-terracotta/25 bg-terracotta/5 p-4 text-sm text-charcoal/80">
+                  Este RSVP está fechado para este grupo.
+                </div>
+              )}
+
+              <div className="mt-5">
+                <div className="text-xs tracking-[0.18em] uppercase text-olive/70">Convidados</div>
+                <div className="mt-3 space-y-4">
+                  {guests.map((g) => (
+                    <div key={g.id} className="rounded-2xl border border-olive/10 p-4 md:p-5">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div className="text-base md:text-lg text-charcoal">{g.fullName}</div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant={g.rsvpStatus === "YES" ? "primary" : "secondary"}
+                            onClick={() => setGuestStatus(g.id, "YES")}
+                            disabled={deadlinePassed}
+                          >
+                            Vai
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={g.rsvpStatus === "NO" ? "primary" : "secondary"}
+                            onClick={() => setGuestStatus(g.id, "NO")}
+                            disabled={deadlinePassed}
+                          >
+                            Não vai
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="text-xs tracking-[0.18em] uppercase text-olive/70">
+                          Restrição alimentar (opcional)
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {DIET_OPTIONS.map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => toggleDiet(g.id, opt)}
+                              disabled={deadlinePassed}
+                              className={[
+                                "rounded-full border px-3 py-1 text-xs transition",
+                                g.diet.includes(opt)
+                                  ? "border-olive/30 bg-olive/10 text-olive"
+                                  : "border-olive/10 bg-ivory text-charcoal/70 hover:border-olive/20"
+                              ].join(" ")}
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-3">
+                          <Input
+                            value={g.dietOther}
+                            onChange={(e) => setDietOther(g.id, e.target.value)}
+                            placeholder="Outro (opcional)"
+                            className="text-sm"
+                            disabled={deadlinePassed}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="text-sm text-charcoal/70">
+                    {deadlineLabel
+                      ? `Você pode enviar/alterar sua resposta até ${deadlineLabel}. Enviaremos sempre a última confirmação recebida.`
+                      : "Você pode enviar/alterar sua resposta reenviando a confirmação."}
+                  </div>
+                  <Button onClick={() => void handleSubmit()} disabled={loading || !party || deadlinePassed}>
+                    {loading ? "Enviando…" : "Confirmar"}
+                  </Button>
+                </div>
+
+                <AnimatePresence>
+                  {submitted && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0, transition: fade }}
+                      exit={{ opacity: 0, y: 10, transition: fade }}
+                      className="mt-6 rounded-2xl border border-olive/15 bg-olive/5 p-5"
+                    >
+                      <div className="text-base md:text-lg font-serif text-charcoal">Confirmação registrada.</div>
+                      <div className="mt-2 text-sm text-charcoal/70">
+                        Obrigado! Se quiser guardar um comprovante, copie o resumo abaixo.
+                      </div>
+
+                      {summary && (
+                        <div className="mt-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-xs tracking-[0.18em] uppercase text-olive/70">Resumo</div>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={async () => {
+                                const ok = await safeCopy(summary);
+                                if (!ok) setError("Não foi possível copiar. Selecione o texto manualmente.");
+                              }}
+                            >
+                              Copiar
+                            </Button>
+                          </div>
+                          <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-olive/10 bg-ivory p-4 text-xs text-charcoal/80">{summary}</pre>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Card>
+    </section>
   );
 }

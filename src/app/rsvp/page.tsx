@@ -2,12 +2,9 @@ import { Container } from "@/components/Container";
 import { SectionTitle } from "@/components/SectionTitle";
 import { Divider } from "@/components/Divider";
 import { TokenGate } from "@/components/rsvp/TokenGate";
+import { Suspense } from "react";
 
-export const dynamic = "force-dynamic";
-
-export default function RsvpPage({ searchParams }: { searchParams?: { t?: string } }) {
-  const t = searchParams?.t ? String(searchParams.t) : undefined;
-
+export default function RsvpPage() {
   return (
     <Container>
       <div className="py-12 md:py-16">
@@ -19,7 +16,7 @@ export default function RsvpPage({ searchParams }: { searchParams?: { t?: string
 
         <Divider />
 
-        <TokenGate mode="rsvp" initialToken={t} />
+        <Suspense fallback={<div className="mt-10 text-sm text-charcoal/60">Carregando…</div>}><TokenGate mode="rsvp" /></Suspense>
       </div>
     </Container>
   );

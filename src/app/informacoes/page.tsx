@@ -4,13 +4,10 @@ import { SectionTitle } from "@/components/SectionTitle";
 import { Divider } from "@/components/Divider";
 import { Card, CardBody } from "@/components/Card";
 import { TokenGate } from "@/components/rsvp/TokenGate";
+import { Suspense } from "react";
 import { site } from "@/lib/site";
 
-export const dynamic = "force-dynamic";
-
-export default function InfoPage({ searchParams }: { searchParams?: { t?: string } }) {
-  const t = searchParams?.t ? String(searchParams.t) : undefined;
-
+export default function InfoPage() {
   return (
     <Container>
       <div className="py-12 md:py-16">
@@ -74,7 +71,7 @@ export default function InfoPage({ searchParams }: { searchParams?: { t?: string
               Para evitar exposição pública, o endereço completo aparece apenas após validação do código do convite.
             </p>
           </div>
-          <TokenGate mode="address" initialToken={t} />
+        <Suspense fallback={<div className="mt-10 text-sm text-charcoal/60">Carregando…</div>}><TokenGate mode="info" /></Suspense>
         </div>
 
         <Divider />
