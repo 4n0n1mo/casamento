@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ivory: #F6F1E8;
+  --taupe: #B8A89A;
+  --terracotta: #B05A3C;
+  --olive: #2F3A2E;
+  --charcoal: #1F1F1F;
+  --gold: #B89B5E;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--ivory);
+  color: var(--charcoal);
+}
+
+::selection {
+  background: rgba(176, 90, 60, 0.20);
+}
+
+a {
+  color: inherit;
+}

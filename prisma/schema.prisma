@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum RsvpStatus {
+  YES
+  NO
+  PENDING
+}
+
+model InviteGroup {
+  id              String   @id @default(cuid())
+  tokenHash       String   @unique
+  tokenEnc        String   // token criptografado (AES-GCM), para export/QR sem expor hash
+  label           String
+  deadline        DateTime
+  plusOneAllowed  Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  guests          Guest[]
+  attempts        RSVPAttempt[]
+}
+
+model Guest {
+  id         String     @id @default(cuid())
+  groupId    String
+  fullName   String
+  rsvpStatus RsvpStatus @default(PENDING)
+  diet       String?    // ex.: "vegetariano;sem_gluten"
+  updatedAt  DateTime   @updatedAt
+
+  group      InviteGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+}
+
+model RSVPAttempt {
+  id        String   @id @default(cuid())
+  groupId   String?
+  ipHash    String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  group     InviteGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([ipHash, createdAt])
+  @@index([groupId, createdAt])
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  provider    String   // ex.: "mercadopago"
+  reference   String   @unique
+  amountCents Int
+  status      String   // created|pending|approved|rejected|unknown
+  providerId  String?  // id do pagamento/preference no provedor
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
