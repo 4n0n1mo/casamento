@@ -26,7 +26,7 @@ model Guest {
   id         String     @id @default(cuid())
   groupId    String
   fullName   String
-  rsvpStatus RsvpStatus @default("PENDING")
+  rsvpStatus String @default("PENDING") // "YES" | "NO" | "PENDING"
   diet       String?    // ex.: "vegetariano;sem_gluten"
   updatedAt  DateTime   @updatedAt
 
