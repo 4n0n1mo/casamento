@@ -1,9 +1,11 @@
-import { type ReadonlyRequestCookies, cookies as nextCookies } from "next/headers";
+import { cookies as nextCookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { timingSafeEqual } from "@/lib/serverCrypto";
 
 const enc = new TextEncoder();
 const COOKIE = "__Host-admin";
+
+type CookieStore = ReturnType<typeof nextCookies>;
 
 export async function signAdminSession() {
   const secret = process.env.RSVP_SESSION_SECRET;
@@ -33,11 +35,11 @@ export function adminCookieName() {
   return COOKIE;
 }
 
-export function getAdminCookie(c: ReadonlyRequestCookies) {
+export function getAdminCookie(c: CookieStore) {
   return c.get(COOKIE)?.value ?? null;
 }
 
-export async function requireAdmin(c: ReadonlyRequestCookies) {
+export async function requireAdmin(c: CookieStore) {
   const v = getAdminCookie(c);
   if (!v) throw new Error("admin_required");
   const ok = await verifyAdminSession(v);
