@@ -7,7 +7,7 @@ import { Card, CardBody } from "@/components/Card";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/adminAuth";
 import { AdminQrBlock } from "@/components/admin/AdminQrBlock";
-import type { Guest } from "@prisma/client";
+type GuestRow = { id: string; fullName: string; rsvpStatus: string };
 
 export default async function GroupPage({ params }: { params: { id: string } }) {
   await requireAdmin(cookies());
@@ -45,7 +45,7 @@ export default async function GroupPage({ params }: { params: { id: string } }) 
             <CardBody>
               <div className="text-xs tracking-[0.18em] uppercase text-olive/70">Convidados</div>
               <ul className="mt-3 space-y-2 text-sm text-charcoal/80">
-                {group.guests.map((g: Guest) => (
+                {group.guests.map((g: GuestRow) => (
                   <li key={g.id} className="flex items-center justify-between gap-3">
                     <span>{g.fullName}</span>
                     <span className="text-xs text-charcoal/60">{g.rsvpStatus}</span>

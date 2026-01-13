@@ -9,6 +9,15 @@ import { requireAdmin } from "@/lib/adminAuth";
 import { AdminImportForm } from "@/components/admin/AdminImportForm";
 import { AdminExportButtons } from "@/components/admin/AdminExportButtons";
 
+type AdminGuestRow = { rsvpStatus: string };
+type AdminGroupRow = {
+  id: string;
+  label: string;
+  deadline: Date;
+  plusOneAllowed: boolean;
+  guests: AdminGuestRow[];
+};
+
 export default async function AdminPage() {
   await requireAdmin(cookies());
 
@@ -95,10 +104,10 @@ export default async function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map((g) => {
-                    const yes = g.guests.filter((x) => x.rsvpStatus === "YES").length;
-                    const no = g.guests.filter((x) => x.rsvpStatus === "NO").length;
-                    const pending = g.guests.filter((x) => x.rsvpStatus === "PENDING").length;
+                  {groups.map((g: AdminGroupRow) => {
+                    const yes = g.guests.filter((x: AdminGuestRow) => x.rsvpStatus === "YES").length;
+                    const no = g.guests.filter((x: AdminGuestRow) => x.rsvpStatus === "NO").length;
+                    const pending = g.guests.filter((x: AdminGuestRow) => x.rsvpStatus === "PENDING").length;
                     return (
                       <tr key={g.id} className="border-b border-line/70">
                         <td className="py-3 pr-3">
