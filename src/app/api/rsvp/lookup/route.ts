@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { getClientIp, hashIp, hmacSha256Hex } from "@/lib/utils";
+import { getClientIp, hashIp, hmacSha256Hex } from "@/lib/serverCrypto";
 import { checkRsvpRateLimit, logRsvpAttempt } from "@/lib/ratelimit";
 import { signRsvpSession } from "@/lib/security";
 import { verifyTurnstileToken } from "@/lib/turnstile";

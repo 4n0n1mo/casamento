@@ -1,6 +1,6 @@
 import { type ReadonlyRequestCookies, cookies as nextCookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
-import { timingSafeEqual } from "@/lib/utils";
+import { timingSafeEqual } from "@/lib/serverCrypto";
 
 const enc = new TextEncoder();
 const COOKIE = "__Host-admin";

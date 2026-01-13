@@ -1,8 +1,8 @@
-import crypto from "node:crypto";
+import crypto from "crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseCsv } from "@/lib/csv";
-import { hmacSha256Hex } from "@/lib/utils";
+import { hmacSha256Hex } from "@/lib/serverCrypto";
 import { encryptToken } from "@/lib/tokenCrypto";
 
 export const runtime = "nodejs";

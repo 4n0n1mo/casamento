@@ -1,7 +1,7 @@
-import crypto from "node:crypto";
+import crypto from "crypto";
 import QRCode from "qrcode";
 import { prisma } from "@/lib/db";
-import { hmacSha256Hex } from "@/lib/utils";
+import { hmacSha256Hex } from "@/lib/serverCrypto";
 import { encryptToken, decryptToken } from "@/lib/tokenCrypto";
 
 export async function adminGetGroupToken(groupId: string): Promise<

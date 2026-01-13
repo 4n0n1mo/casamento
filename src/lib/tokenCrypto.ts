@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import crypto from "crypto";
 
 function getKey() {
   const raw = process.env.TOKEN_ENC_KEY;

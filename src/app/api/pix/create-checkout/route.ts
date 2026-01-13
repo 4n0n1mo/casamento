@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import crypto from "node:crypto";
+import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { createPixCheckout } from "@/lib/payments";
 import { formatCentsBRL } from "@/lib/utils";
